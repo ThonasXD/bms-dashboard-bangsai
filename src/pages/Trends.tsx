@@ -1,7 +1,6 @@
 // =============================================================================
-// BMS Session KPI Dashboard - Visit Trends Page (T057 / US2)
-// Redesigned: Rich informative trends page with summary cards, day-of-week
-// breakdown, top departments, monthly summary, and hourly drill-down.
+// BMS Session KPI Dashboard - Visit Trends Page
+// Diversified chart types for professional showcase
 // =============================================================================
 
 import { useState, useCallback, useMemo } from 'react'
@@ -17,7 +16,6 @@ import {
 } from '@/services/kpiService'
 import type { VisitTrend, HourlyDistribution, DepartmentWorkload } from '@/types'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
-import { VisitTrendChart } from '@/components/charts/VisitTrendChart'
 import { HourlyChart } from '@/components/charts/HourlyChart'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -25,441 +23,225 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/EmptyState'
 import { getDateRange } from '@/utils/dateUtils'
 import { TrendingUp, BarChart3, ArrowUp, CalendarCheck } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { th } from 'date-fns/locale'
 import {
   ResponsiveContainer,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
 } from 'recharts'
 
+function formatDateLabel(dateStr: string): string {
+  try {
+    return format(parseISO(dateStr), 'd MMM', { locale: th })
+  } catch {
+    return dateStr
+  }
+}
+
 export default function Trends() {
   const { connectionConfig, session } = useBmsSessionContext()
 
-  // ---------------------------------------------------------------------------
-  // Date range state (default: last 30 days)
-  // ---------------------------------------------------------------------------
   const defaultRange = useMemo(() => getDateRange(30), [])
   const [startDate, setStartDate] = useState(defaultRange.startDate)
   const [endDate, setEndDate] = useState(defaultRange.endDate)
-
-  // ---------------------------------------------------------------------------
-  // Hourly drill-down state
-  // ---------------------------------------------------------------------------
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const isReady = connectionConfig !== null && session !== null
 
-  // ---------------------------------------------------------------------------
-  // Daily visit trend query
-  // ---------------------------------------------------------------------------
-  const dailyQueryFn = useCallback(
-    () =>
-      getDailyVisitTrend(
-        connectionConfig!,
-        session!.databaseType,
-        startDate,
-        endDate,
-      ),
-    [connectionConfig, session, startDate, endDate],
-  )
+  // --- Queries ---
+  const { data: dailyData, isLoading: isDailyLoading, isError: isDailyError, error: dailyError, execute: refetchDaily } =
+    useQuery<VisitTrend[]>({
+      queryFn: useCallback(() => getDailyVisitTrend(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
 
-  const {
-    data: dailyData,
-    isLoading: isDailyLoading,
-    isError: isDailyError,
-    error: dailyError,
-    execute: refetchDaily,
-  } = useQuery<VisitTrend[]>({
-    queryFn: dailyQueryFn,
-    enabled: isReady,
-  })
+  const { data: hourlyData, isLoading: isHourlyLoading, execute: fetchHourly, reset: resetHourly } =
+    useQuery<HourlyDistribution[]>({
+      queryFn: useCallback(() => getHourlyDistribution(connectionConfig!, session!.databaseType, selectedDate!), [connectionConfig, session, selectedDate]),
+      enabled: isReady && selectedDate !== null,
+    })
 
-  // ---------------------------------------------------------------------------
-  // Hourly distribution query (triggered by bar click)
-  // ---------------------------------------------------------------------------
-  const hourlyQueryFn = useCallback(
-    () =>
-      getHourlyDistribution(
-        connectionConfig!,
-        session!.databaseType,
-        selectedDate!,
-      ),
-    [connectionConfig, session, selectedDate],
-  )
+  const { data: dowData, isLoading: isDowLoading } =
+    useQuery<{ dayOfWeek: number; dayName: string; visitCount: number }[]>({
+      queryFn: useCallback(() => getVisitsByDayOfWeek(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
 
-  const {
-    data: hourlyData,
-    isLoading: isHourlyLoading,
-    execute: fetchHourly,
-    reset: resetHourly,
-  } = useQuery<HourlyDistribution[]>({
-    queryFn: hourlyQueryFn,
-    enabled: isReady && selectedDate !== null,
-  })
+  const { data: topDeptsData, isLoading: isTopDeptsLoading } =
+    useQuery<DepartmentWorkload[]>({
+      queryFn: useCallback(() => getTopDepartmentsForRange(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
 
-  // ---------------------------------------------------------------------------
-  // Day-of-week visit query
-  // ---------------------------------------------------------------------------
-  const dowQueryFn = useCallback(
-    () =>
-      getVisitsByDayOfWeek(
-        connectionConfig!,
-        session!.databaseType,
-        startDate,
-        endDate,
-      ),
-    [connectionConfig, session, startDate, endDate],
-  )
+  const { data: monthlyData, isLoading: isMonthlyLoading } =
+    useQuery<{ month: string; visitCount: number }[]>({
+      queryFn: useCallback(() => getMonthlyVisitSummary(connectionConfig!, session!.databaseType), [connectionConfig, session]),
+      enabled: isReady,
+    })
 
-  const {
-    data: dowData,
-    isLoading: isDowLoading,
-  } = useQuery<{ dayOfWeek: number; dayName: string; visitCount: number }[]>({
-    queryFn: dowQueryFn,
-    enabled: isReady,
-  })
+  const trendSummary = useMemo(() => computeTrendSummary(dailyData ?? []), [dailyData])
 
-  // ---------------------------------------------------------------------------
-  // Top departments for range
-  // ---------------------------------------------------------------------------
-  const topDeptsQueryFn = useCallback(
-    () =>
-      getTopDepartmentsForRange(
-        connectionConfig!,
-        session!.databaseType,
-        startDate,
-        endDate,
-      ),
-    [connectionConfig, session, startDate, endDate],
-  )
-
-  const {
-    data: topDeptsData,
-    isLoading: isTopDeptsLoading,
-  } = useQuery<DepartmentWorkload[]>({
-    queryFn: topDeptsQueryFn,
-    enabled: isReady,
-  })
-
-  // ---------------------------------------------------------------------------
-  // Monthly visit summary (last 6 months)
-  // ---------------------------------------------------------------------------
-  const monthlyQueryFn = useCallback(
-    () =>
-      getMonthlyVisitSummary(
-        connectionConfig!,
-        session!.databaseType,
-      ),
-    [connectionConfig, session],
-  )
-
-  const {
-    data: monthlyData,
-    isLoading: isMonthlyLoading,
-  } = useQuery<{ month: string; visitCount: number }[]>({
-    queryFn: monthlyQueryFn,
-    enabled: isReady,
-  })
-
-  // ---------------------------------------------------------------------------
-  // Computed trend summary
-  // ---------------------------------------------------------------------------
-  const trendSummary = useMemo(
-    () => computeTrendSummary(dailyData ?? []),
-    [dailyData],
-  )
-
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
-  const handleRangeChange = useCallback(
-    (newStart: string, newEnd: string) => {
-      setStartDate(newStart)
-      setEndDate(newEnd)
-      setSelectedDate(null)
-      resetHourly()
-    },
-    [resetHourly],
-  )
-
-  const handleDateClick = useCallback(
-    (date: string) => {
-      setSelectedDate(date)
-      if (connectionConfig && session) {
-        fetchHourly()
-      }
-    },
-    [connectionConfig, session, fetchHourly],
-  )
-
-  const handleClearSelection = useCallback(() => {
+  const handleRangeChange = useCallback((newStart: string, newEnd: string) => {
+    setStartDate(newStart)
+    setEndDate(newEnd)
     setSelectedDate(null)
     resetHourly()
   }, [resetHourly])
 
-  // ---------------------------------------------------------------------------
-  // Shared Recharts tooltip style
-  // ---------------------------------------------------------------------------
+  const handleDateClick = useCallback((date: string) => {
+    setSelectedDate(date)
+    if (connectionConfig && session) fetchHourly()
+  }, [connectionConfig, session, fetchHourly])
+
   const tooltipStyle = {
     borderRadius: '8px',
     border: '1px solid hsl(var(--border))',
     backgroundColor: 'hsl(var(--popover))',
     color: 'hsl(var(--popover-foreground))',
+    fontSize: '12px',
   }
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
   return (
-    <div className="flex flex-col gap-6">
-      {/* ------------------------------------------------------------------ */}
-      {/* 1. Header + DateRangePicker                                        */}
-      {/* ------------------------------------------------------------------ */}
+    <div className="flex flex-col gap-6 animate-fade-in">
+      {/* 1. Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          แนวโน้มการเข้ารับบริการ
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">แนวโน้มการเข้ารับบริการ</h1>
         <p className="text-sm text-muted-foreground">
           วิเคราะห์จำนวนการเข้ารับบริการรายวัน รายสัปดาห์ และรายเดือน พร้อมสรุปแผนกยอดนิยม
         </p>
       </div>
 
-      <DateRangePicker
-        startDate={startDate}
-        endDate={endDate}
-        onRangeChange={handleRangeChange}
-        isLoading={isDailyLoading}
-      />
+      <DateRangePicker startDate={startDate} endDate={endDate} onRangeChange={handleRangeChange} isLoading={isDailyLoading} />
 
-      {/* Error banner */}
       {isDailyError && dailyError && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4">
-          <p className="text-sm text-destructive">
-            {dailyError.message || 'ไม่สามารถโหลดข้อมูลแนวโน้มได้'}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={refetchDaily}
-          >
-            ลองอีกครั้ง
-          </Button>
+          <p className="text-sm text-destructive">{dailyError.message || 'ไม่สามารถโหลดข้อมูลแนวโน้มได้'}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={refetchDaily}>ลองอีกครั้ง</Button>
         </div>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 2. Trend Summary Cards                                             */}
-      {/* ------------------------------------------------------------------ */}
+      {/* 2. Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total visits */}
-        <Card className="p-4">
-          <CardContent className="p-0 flex items-center gap-3">
-            {isDailyLoading ? (
-              <Skeleton className="h-16 w-full" />
-            ) : (
-              <>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                  <TrendingUp className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">
-                    จำนวนการเข้ารับบริการทั้งหมด
-                  </p>
-                  <p className="text-xl font-bold">
-                    {trendSummary.totalVisits.toLocaleString()}
-                  </p>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Average daily */}
-        <Card className="p-4">
-          <CardContent className="p-0 flex items-center gap-3">
-            {isDailyLoading ? (
-              <Skeleton className="h-16 w-full" />
-            ) : (
-              <>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                  <BarChart3 className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">
-                    เฉลี่ยต่อวัน
-                  </p>
-                  <p className="text-xl font-bold">
-                    {trendSummary.avgDailyVisits.toLocaleString()}
-                  </p>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Peak day */}
-        <Card className="p-4">
-          <CardContent className="p-0 flex items-center gap-3">
-            {isDailyLoading ? (
-              <Skeleton className="h-16 w-full" />
-            ) : (
-              <>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-                  <ArrowUp className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">
-                    วันที่มีผู้เข้ารับบริการมากที่สุด
-                  </p>
-                  <p className="text-xl font-bold">
-                    {trendSummary.peakDay
-                      ? trendSummary.peakDay.count.toLocaleString()
-                      : '-'}
-                  </p>
-                  {trendSummary.peakDay && (
-                    <p className="text-xs text-muted-foreground">
-                      {trendSummary.peakDay.date}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Days with visits */}
-        <Card className="p-4">
-          <CardContent className="p-0 flex items-center gap-3">
-            {isDailyLoading ? (
-              <Skeleton className="h-16 w-full" />
-            ) : (
-              <>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
-                  <CalendarCheck className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">
-                    จำนวนวันที่มีบริการ
-                  </p>
-                  <p className="text-xl font-bold">
-                    {trendSummary.daysWithVisits} / {trendSummary.totalDays}
-                  </p>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        {[
+          { label: 'จำนวนการเข้ารับบริการทั้งหมด', value: trendSummary.totalVisits, icon: TrendingUp, color: 'blue' },
+          { label: 'เฉลี่ยต่อวัน', value: trendSummary.avgDailyVisits, icon: BarChart3, color: 'green' },
+          { label: 'วันที่มีผู้เข้ารับบริการมากที่สุด', value: trendSummary.peakDay?.count ?? 0, sub: trendSummary.peakDay?.date, icon: ArrowUp, color: 'amber' },
+          { label: 'จำนวนวันที่มีบริการ', value: `${trendSummary.daysWithVisits} / ${trendSummary.totalDays}`, icon: CalendarCheck, color: 'purple' },
+        ].map((card) => (
+          <Card key={card.label} className="card-shadow-hover p-4">
+            <CardContent className="p-0 flex items-center gap-3">
+              {isDailyLoading ? <Skeleton className="h-16 w-full" /> : (
+                <>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-${card.color}-100 text-${card.color}-600 dark:bg-${card.color}-900/30 dark:text-${card.color}-400`}>
+                    <card.icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground truncate">{card.label}</p>
+                    <p className="text-xl font-bold">{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</p>
+                    {card.sub && <p className="text-xs text-muted-foreground">{card.sub}</p>}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 3. Daily Visit Trend Chart                                         */}
-      {/* ------------------------------------------------------------------ */}
-      <VisitTrendChart
-        data={dailyData ?? []}
-        isLoading={isDailyLoading}
-        onDateClick={handleDateClick}
-      />
+      {/* 3. Daily Trend — AREA CHART (gradient fill) */}
+      <Card className="card-shadow">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">แนวโน้มการเข้ารับบริการรายวัน</CardTitle>
+          <CardDescription>คลิกที่จุดข้อมูลเพื่อดูรายละเอียดรายชั่วโมง</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isDailyLoading ? <Skeleton className="h-[300px] w-full" /> :
+           !dailyData || dailyData.length === 0 ? <EmptyState title="ไม่มีข้อมูลการเข้ารับบริการ" /> : (
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={dailyData} onClick={(state: Record<string, unknown>) => {
+                const payload = state?.activePayload as Array<{ payload: { date: string } }> | undefined
+                if (payload?.[0]?.payload) handleDateClick(payload[0].payload.date)
+              }}>
+                <defs>
+                  <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="date" tickFormatter={formatDateLabel} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  labelFormatter={((label: unknown) => formatDateLabel(String(label))) as never}
+                  formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as never}
+                  contentStyle={tooltipStyle}
+                />
+                <Area type="monotone" dataKey="visitCount" stroke="hsl(var(--chart-1))" strokeWidth={2.5} fill="url(#areaGradient)" dot={{ r: 4, fill: 'hsl(var(--chart-1))', strokeWidth: 2, stroke: 'white' }} activeDot={{ r: 6, strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 4. Two-column: Day-of-week + Top departments                       */}
-      {/* ------------------------------------------------------------------ */}
+      {/* 4. Two-column: Radar (day-of-week) + Horizontal Bar (top depts) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Day of week breakdown */}
-        <Card>
+        {/* Day of week — RADAR CHART */}
+        <Card className="card-shadow">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              การเข้ารับบริการตามวันในสัปดาห์
-            </CardTitle>
-            <CardDescription>
-              สรุปจำนวนผู้เข้ารับบริการแยกตามวันในสัปดาห์
-            </CardDescription>
+            <CardTitle className="text-sm font-medium">การเข้ารับบริการตามวันในสัปดาห์</CardTitle>
+            <CardDescription>รูปแบบการกระจายตัวของผู้เข้ารับบริการแยกตามวัน</CardDescription>
           </CardHeader>
           <CardContent>
-            {isDowLoading ? (
-              <Skeleton className="h-[250px] w-full" />
-            ) : !dowData || dowData.length === 0 ? (
-              <EmptyState title="ไม่มีข้อมูลแยกตามวัน" />
-            ) : (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={dowData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    dataKey="dayName"
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
+            {isDowLoading ? <Skeleton className="h-[280px] w-full" /> :
+             !dowData || dowData.length === 0 ? <EmptyState title="ไม่มีข้อมูลแยกตามวัน" /> : (
+              <ResponsiveContainer width="100%" height={280}>
+                <RadarChart data={dowData} cx="50%" cy="50%" outerRadius="70%">
+                  <PolarGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <PolarAngleAxis dataKey="dayName" tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
+                  <PolarRadiusAxis tick={{ fontSize: 10 }} />
                   <Tooltip
                     formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as never}
                     contentStyle={tooltipStyle}
                   />
-                  <Bar
-                    dataKey="visitCount"
-                    fill="hsl(var(--chart-3))"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
+                  <Radar dataKey="visitCount" stroke="hsl(var(--chart-2))" fill="hsl(var(--chart-2))" fillOpacity={0.25} strokeWidth={2} dot={{ r: 4, fill: 'hsl(var(--chart-2))' }} />
+                </RadarChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        {/* Top departments */}
-        <Card>
+        {/* Top departments — HORIZONTAL BAR (keep as bar — best for ranking) */}
+        <Card className="card-shadow">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              แผนกยอดนิยม
-            </CardTitle>
-            <CardDescription>
-              5 แผนกที่มีผู้เข้ารับบริการมากที่สุดในช่วงเวลาที่เลือก
-            </CardDescription>
+            <CardTitle className="text-sm font-medium">แผนกยอดนิยม</CardTitle>
+            <CardDescription>5 แผนกที่มีผู้เข้ารับบริการมากที่สุดในช่วงเวลาที่เลือก</CardDescription>
           </CardHeader>
           <CardContent>
-            {isTopDeptsLoading ? (
-              <Skeleton className="h-[250px] w-full" />
-            ) : !topDeptsData || topDeptsData.length === 0 ? (
-              <EmptyState title="ไม่มีข้อมูลแผนก" />
-            ) : (
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(200, topDeptsData.length * 50)}
-              >
+            {isTopDeptsLoading ? <Skeleton className="h-[250px] w-full" /> :
+             !topDeptsData || topDeptsData.length === 0 ? <EmptyState title="ไม่มีข้อมูลแผนก" /> : (
+              <ResponsiveContainer width="100%" height={Math.max(200, topDeptsData.length * 50)}>
                 <BarChart data={topDeptsData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <YAxis
-                    dataKey="departmentName"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    width={140}
-                  />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis dataKey="departmentName" type="category" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={140} />
                   <Tooltip
                     formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as never}
                     contentStyle={tooltipStyle}
                   />
-                  <Bar
-                    dataKey="visitCount"
-                    fill="hsl(var(--chart-4))"
-                    radius={[0, 4, 4, 0]}
-                  />
+                  <Bar dataKey="visitCount" fill="hsl(var(--chart-4))" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -467,72 +249,41 @@ export default function Trends() {
         </Card>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 5. Hourly drill-down (when a date is selected)                     */}
-      {/* ------------------------------------------------------------------ */}
+      {/* 5. Hourly drill-down */}
       {selectedDate && (
-        <Card>
+        <Card className="card-shadow border-l-4 border-l-blue-500">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">
-                การกระจายรายชั่วโมงสำหรับ {selectedDate}
-              </CardTitle>
-              <Button variant="outline" size="sm" onClick={handleClearSelection}>
-                ล้างการเลือก
-              </Button>
+              <CardTitle className="text-sm font-medium">การกระจายรายชั่วโมงสำหรับ {selectedDate}</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => { setSelectedDate(null); resetHourly() }}>ล้างการเลือก</Button>
             </div>
           </CardHeader>
           <CardContent>
-            <HourlyChart
-              data={hourlyData ?? []}
-              isLoading={isHourlyLoading}
-              selectedDate={selectedDate}
-            />
+            <HourlyChart data={hourlyData ?? []} isLoading={isHourlyLoading} selectedDate={selectedDate} />
           </CardContent>
         </Card>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 6. Monthly summary (last 6 months)                                 */}
-      {/* ------------------------------------------------------------------ */}
-      <Card>
+      {/* 6. Monthly summary — LINE CHART */}
+      <Card className="card-shadow">
         <CardHeader>
-          <CardTitle className="text-sm font-medium">
-            สรุปการเข้ารับบริการรายเดือน
-          </CardTitle>
+          <CardTitle className="text-sm font-medium">สรุปการเข้ารับบริการรายเดือน</CardTitle>
           <CardDescription>6 เดือนย้อนหลัง</CardDescription>
         </CardHeader>
         <CardContent>
-          {isMonthlyLoading ? (
-            <Skeleton className="h-[200px] w-full" />
-          ) : !monthlyData || monthlyData.length === 0 ? (
-            <EmptyState title="ไม่มีข้อมูลรายเดือน" />
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={monthlyData}>
+          {isMonthlyLoading ? <Skeleton className="h-[220px] w-full" /> :
+           !monthlyData || monthlyData.length === 0 ? <EmptyState title="ไม่มีข้อมูลรายเดือน" /> : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip
                   formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as never}
                   contentStyle={tooltipStyle}
                 />
-                <Bar
-                  dataKey="visitCount"
-                  fill="hsl(var(--chart-5))"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
+                <Line type="monotone" dataKey="visitCount" stroke="hsl(var(--chart-5))" strokeWidth={2.5} dot={{ r: 5, fill: 'hsl(var(--chart-5))', strokeWidth: 2, stroke: 'white' }} activeDot={{ r: 7, strokeWidth: 2 }} />
+              </LineChart>
             </ResponsiveContainer>
           )}
         </CardContent>
