@@ -96,7 +96,7 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     margin: 0;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family: 'Sarabun', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
