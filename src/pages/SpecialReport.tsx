@@ -5,7 +5,7 @@ import {
   CheckCircle2, 
   Users,
   Search,
-  Loader2 // เพิ่ม icon loading
+  Loader2
 } from 'lucide-react';
 import {
   BarChart,
@@ -22,7 +22,6 @@ import {
 const formatThaiDate = (dateStr: string) => {
   if (!dateStr || dateStr === "0000-00-00") return "-";
   
-  // ตัดเฉพาะส่วนวันที่ออกมา (เผื่อมี Time ติดมาด้วย)
   const cleanDate = dateStr.split('T')[0];
   const parts = cleanDate.split('-');
   
@@ -55,28 +54,29 @@ const SpecialReport = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // เปลี่ยน URL นี้ให้ตรงกับ path ของไฟล์ PHP ใน XAMPP ของคุณ
       const response = await fetch(`api/get_auth_data.php?start=${startDate}&end=${endDate}`);
       if (!response.ok) throw new Error('Network response was not ok');
       const data = await response.json();
       setDisplayData(data);
     } catch (error) {
       console.error("Fetch error:", error);
-      // ถ้า Error ให้ลองเช็คว่า API ส่งข้อมูลมาถูกไหม หรือใช้ค่าว่างแทน
       setDisplayData([]);
     } finally {
       setLoading(false);
     }
   }, [startDate, endDate]);
 
-  // โหลดข้อมูลครั้งแรกเมื่อเปิดหน้าเว็บ
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]); // เพิ่ม fetchData ใน dependency array เพื่อความถูกต้องของ React
 
+  // 1. คำนวณภาพรวมสำหรับการ์ดและกราฟ
   const totalCases = displayData.length;
-  const missingAuth = displayData.filter(item => !item.auth || item.auth === '').length;
+  const missingAuth = displayData.filter(item => !item.auth || item.auth.trim() === '').length;
   const completeAuth = totalCases - missingAuth;
+
+  // 🌟 2. ตัวแปรใหม่: กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
+  const missingAuthTableData = displayData.filter(item => !item.auth || item.auth.trim() === '');
 
   const chartData = [
     { name: 'สิทธิครบ', count: completeAuth, fill: '#10b981' },
@@ -96,14 +96,14 @@ const SpecialReport = () => {
           <div className="flex items-center gap-1">
              <input 
                type="date" 
-               className="text-sm border-none focus:ring-0 p-1" 
+               className="text-sm border-none focus:ring-0 p-1 cursor-pointer" 
                value={startDate} 
                onChange={(e) => setStartDate(e.target.value)} 
              />
              <span className="text-slate-400 text-xs">ถึง</span>
              <input 
                type="date" 
-               className="text-sm border-none focus:ring-0 p-1" 
+               className="text-sm border-none focus:ring-0 p-1 cursor-pointer" 
                value={endDate} 
                onChange={(e) => setEndDate(e.target.value)} 
              />
@@ -119,7 +119,7 @@ const SpecialReport = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (ข้อมูลภาพรวมทั้งหมด) */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between pb-2">
@@ -153,8 +153,8 @@ const SpecialReport = () => {
               <BarChart data={chartData} layout="vertical" margin={{ left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '12px' }} />
-                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '12px', fontWeight: 500 }} />
+                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={40}>
                   {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
                 </Bar>
@@ -163,42 +163,57 @@ const SpecialReport = () => {
           </div>
         </div>
 
-        {/* Table Section */}
-        <div className="md:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        {/* Table Section (แสดงเฉพาะคนที่สิทธิว่าง) */}
+        <div className="md:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b bg-rose-50/50 flex justify-between items-center">
+            <h3 className="font-semibold text-rose-700 text-sm">รายชื่อผู้มารับบริการที่ต้องตาม Auth Code</h3>
+            <span className="text-xs bg-white text-rose-600 px-2 py-1 rounded-full border border-rose-200 font-medium">
+              พบ {missingAuthTableData.length} รายการ
+            </span>
+          </div>
+          
+          <div className="overflow-x-auto flex-1">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b sticky top-0">
                 <tr>
                   <th className="px-4 py-3">HN / AN</th>
                   <th className="px-4 py-3">วันที่</th>
                   <th className="px-4 py-3">ชื่อ-นามสกุล</th>
-                  <th className="px-4 py-3 text-center">AUTH CODE</th>
+                  <th className="px-4 py-3 text-center">สถานะ</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {loading ? (
                   <tr><td colSpan={4} className="p-8 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
-                ) : displayData.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50">
+                ) : missingAuthTableData.map((item, idx) => ( // 🌟 นำตัวแปรที่กรองแล้วมาใช้งาน
+                  <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
                     <td className="px-4 py-4">
-                      <div className="font-bold">{item.hn}</div>
+                      <div className="font-bold text-slate-800">{item.hn}</div>
                       <div className="text-[10px] text-slate-400">AN: {item.an}</div>
                     </td>
-                    <td className="px-4 py-4">{formatThaiDate(item.date)}</td>
-                    <td className="px-4 py-4 font-semibold">{item.name}</td>
+                    <td className="px-4 py-4 text-slate-600">{formatThaiDate(item.date)}</td>
+                    <td className="px-4 py-4 font-semibold text-slate-700">{item.name}</td>
                     <td className="px-4 py-4 text-center">
-                      {item.auth ? (
-                        <span className="text-emerald-700 bg-emerald-50 px-2 py-1 rounded text-xs">{item.auth}</span>
-                      ) : (
-                        <span className="text-rose-600 bg-rose-50 px-2 py-1 rounded text-xs animate-pulse">ว่าง</span>
-                      )}
+                       <span className="text-rose-600 bg-rose-50 px-2 py-1 rounded text-xs border border-rose-100 font-medium animate-pulse">
+                         ไม่มี Auth
+                       </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!loading && displayData.length === 0 && (
-              <div className="p-8 text-center text-slate-400">ไม่พบข้อมูลในช่วงวันที่เลือก</div>
+            
+            {/* 🌟 กรณีที่ไม่มีคนสิทธิว่างเลย (เคลียร์งานหมดแล้ว) */}
+            {!loading && missingAuthTableData.length === 0 && (
+              <div className="p-12 text-center flex flex-col items-center justify-center space-y-3">
+                <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-slate-800 font-medium">ยอดเยี่ยมมาก!</p>
+                  <p className="text-slate-500 text-sm">ไม่มีผู้มารับบริการที่สิทธิว่างในช่วงวันที่เลือก</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
