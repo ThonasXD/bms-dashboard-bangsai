@@ -12,6 +12,7 @@ import {
   LogOut,
   TrendingUp,
   Users,
+  FileText, // 1. เพิ่มการ Import ไอคอนใหม่ตรงนี้
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -30,6 +31,7 @@ const NAV_TABS: NavTab[] = [
   { label: 'แนวโน้ม', path: '/trends', icon: TrendingUp },
   { label: 'แผนก', path: '/departments', icon: Building2 },
   { label: 'ข้อมูลประชากร', path: '/demographics', icon: Users },
+  { label: 'รายงานพิเศษ', path: '/special-report', icon: FileText }, // 2. เพิ่มแท็บใหม่ตรงนี้
 ];
 
 // ---------------------------------------------------------------------------
