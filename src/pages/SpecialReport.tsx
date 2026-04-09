@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Calendar as CalendarIcon, 
   UserX, 
   CheckCircle2, 
   Users,
   Search,
+  Loader2 // เพิ่ม icon loading
 } from 'lucide-react';
 import {
   BarChart,
@@ -17,7 +18,20 @@ import {
   Cell
 } from 'recharts';
 
-// --- ฟังก์ชันจัดการวันที่ ---
+// --- ฟังก์ชันจัดการวันที่ (บังคับเป็น DD/MM/YYYY) ---
+const formatThaiDate = (dateStr: string) => {
+  if (!dateStr || dateStr === "0000-00-00") return "-";
+  
+  // ตัดเฉพาะส่วนวันที่ออกมา (เผื่อมี Time ติดมาด้วย)
+  const cleanDate = dateStr.split('T')[0];
+  const parts = cleanDate.split('-');
+  
+  if (parts.length !== 3) return dateStr;
+  
+  const [year, month, day] = parts;
+  return `${day}/${month}/${year}`;
+};
+
 const getTodayLocal = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
@@ -31,40 +45,37 @@ const getFirstDayOfMonthLocal = () => {
   return new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
 };
 
-// แก้ไขจุดนี้: เปลี่ยนจาก toLocaleDateString เป็นการจัด Format ด้วย String
-const formatThaiDate = (dateStr: string) => {
-  if (!dateStr) return "-";
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year}`; // จะได้ผลลัพธ์เป็น 09/04/2026
-};
-
 const SpecialReport = () => {
   const [startDate, setStartDate] = useState(getFirstDayOfMonthLocal());
   const [endDate, setEndDate] = useState(getTodayLocal());
-  
   const [displayData, setDisplayData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const MOCK_DATA = useMemo(() => [
-    { hn: '670001', an: '6900001', date: '2026-03-01', name: 'นายสมชาย รักดี', right: 'ชำระเงินเอง', auth: '' },
-    { hn: '670045', an: '6900023', date: '2026-03-15', name: 'นางสาวใจดี มีสุข', right: 'สิทธิบัตรทอง', auth: 'A12345' },
-    { hn: '670089', an: '6900045', date: '2026-04-01', name: 'นายมานะ ขยัน', right: 'สิทธิบัตรทอง', auth: '' },
-    { hn: '670120', an: '6900060', date: '2026-04-05', name: 'นางวิไล พรพรรณ', right: 'สิทธิข้าราชการ', auth: '' },
-    { hn: '670155', an: '6900088', date: '2026-04-09', name: 'เด็กชายเก่ง กล้า', right: 'สิทธิบัตรทอง', auth: 'B98765' },
-  ], []);
+  // --- ฟังก์ชันดึงข้อมูลจาก API จริง ---
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // เปลี่ยน URL นี้ให้ตรงกับ path ของไฟล์ PHP ใน XAMPP ของคุณ
+      const response = await fetch(`api/get_auth_data.php?start=${startDate}&end=${endDate}`);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const data = await response.json();
+      setDisplayData(data);
+    } catch (error) {
+      console.error("Fetch error:", error);
+      // ถ้า Error ให้ลองเช็คว่า API ส่งข้อมูลมาถูกไหม หรือใช้ค่าว่างแทน
+      setDisplayData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate]);
 
-  const handleSearch = () => {
-    const filtered = MOCK_DATA.filter(item => {
-      return item.date >= startDate && item.date <= endDate;
-    });
-    setDisplayData(filtered);
-  };
-
-  useMemo(() => {
-    setDisplayData(MOCK_DATA);
-  }, [MOCK_DATA]);
+  // โหลดข้อมูลครั้งแรกเมื่อเปิดหน้าเว็บ
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const totalCases = displayData.length;
-  const missingAuth = displayData.filter(item => item.auth === '').length;
+  const missingAuth = displayData.filter(item => !item.auth || item.auth === '').length;
   const completeAuth = totalCases - missingAuth;
 
   const chartData = [
@@ -83,19 +94,32 @@ const SpecialReport = () => {
         <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
           <CalendarIcon className="h-4 w-4 text-slate-400" />
           <div className="flex items-center gap-1">
-             <input type="date" className="text-sm border-none focus:ring-0 p-1" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+             <input 
+               type="date" 
+               className="text-sm border-none focus:ring-0 p-1" 
+               value={startDate} 
+               onChange={(e) => setStartDate(e.target.value)} 
+             />
              <span className="text-slate-400 text-xs">ถึง</span>
-             <input type="date" className="text-sm border-none focus:ring-0 p-1" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+             <input 
+               type="date" 
+               className="text-sm border-none focus:ring-0 p-1" 
+               value={endDate} 
+               onChange={(e) => setEndDate(e.target.value)} 
+             />
           </div>
           <button 
-            onClick={handleSearch}
-            className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95"
+            onClick={fetchData}
+            disabled={loading}
+            className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
           >
-            <Search className="h-4 w-4" /> ค้นหา
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} 
+            ค้นหา
           </button>
         </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between pb-2">
@@ -121,6 +145,7 @@ const SpecialReport = () => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
+        {/* Chart Section */}
         <div className="md:col-span-3 rounded-xl border bg-white p-6 shadow-sm">
           <h3 className="font-semibold text-slate-800 text-sm mb-6">สัดส่วนข้อมูล</h3>
           <div className="h-[300px] w-full">
@@ -138,6 +163,7 @@ const SpecialReport = () => {
           </div>
         </div>
 
+        {/* Table Section */}
         <div className="md:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -150,7 +176,9 @@ const SpecialReport = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {displayData.map((item, idx) => (
+                {loading ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+                ) : displayData.map((item, idx) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-4 py-4">
                       <div className="font-bold">{item.hn}</div>
@@ -169,7 +197,7 @@ const SpecialReport = () => {
                 ))}
               </tbody>
             </table>
-            {displayData.length === 0 && (
+            {!loading && displayData.length === 0 && (
               <div className="p-8 text-center text-slate-400">ไม่พบข้อมูลในช่วงวันที่เลือก</div>
             )}
           </div>
