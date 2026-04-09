@@ -4,8 +4,7 @@ import {
   UserX, 
   CheckCircle2, 
   Users,
-  BarChart3,
-  Search
+  Search,
 } from 'lucide-react';
 import {
   BarChart,
