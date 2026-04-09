@@ -1,16 +1,16 @@
-import { useState, useMemo, useEffect } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  UserX, 
-  CheckCircle2, 
-  Users,
-  Search
-} from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
-} from 'recharts';
+import { useState, useCallback, useMemo } from 'react';
+import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
+import { useQuery } from '@/hooks/useQuery';
+import { getDateRange } from '@/utils/dateUtils';
+// 🌟 นำเข้า DateRangePicker ของระบบเดิม
+import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
+// 🌟 นำเข้าฟังก์ชันที่เราเพิ่มในขั้นตอนที่ 1
+import { getMissingAuthCases } from '@/services/kpiService'; 
 
-// --- ฟังก์ชันจัดการวันที่ ---
+import { UserX, CheckCircle2, Users } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+// --- ฟังก์ชันจัดการวันที่ให้แสดงผลสวยงาม ---
 const formatThaiDate = (dateStr: string) => {
   if (!dateStr || dateStr === "0000-00-00") return "-";
   const cleanDate = dateStr.split('T')[0];
@@ -20,101 +20,80 @@ const formatThaiDate = (dateStr: string) => {
   return `${day}/${month}/${year}`;
 };
 
-const getTodayLocal = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().split('T')[0];
-};
+export default function SpecialReport() {
+  // 🌟 ดึง Context การเชื่อมต่อ DB มาใช้งาน (เหมือนหน้า Demographics)
+  const { connectionConfig, session } = useBmsSessionContext();
 
-const getFirstDayOfMonthLocal = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const offset = firstDay.getTimezoneOffset() * 60000;
-  return new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
-};
+  const defaultRange = useMemo(() => getDateRange(30), []);
+  const [startDate, setStartDate] = useState(defaultRange.startDate);
+  const [endDate, setEndDate] = useState(defaultRange.endDate);
 
-const SpecialReport = () => {
-  const [startDate, setStartDate] = useState(getFirstDayOfMonthLocal());
-  const [endDate, setEndDate] = useState(getTodayLocal());
+  const isConnected = connectionConfig !== null && session !== null;
 
-  // 🌟 1. ฐานข้อมูลจำลอง (Mock Data) ใส่เคสวันที่ต่างกันเพื่อให้ลองค้นหาได้
-  const ALL_MOCK_DATA = useMemo(() => [
-    { hn: '670001', an: '6900001', date: '2026-03-01', name: 'นายสมชาย รักดี', auth: '' },
-    { hn: '670045', an: '6900023', date: '2026-03-15', name: 'นางสาวใจดี มีสุข', auth: 'A12345' },
-    { hn: '670089', an: '6900045', date: '2026-04-01', name: 'นายมานะ ขยัน', auth: '' },
-    { hn: '670120', an: '6900060', date: '2026-04-05', name: 'นางวิไล พรพรรณ', auth: 'C77889' },
-    { hn: '670155', an: '6900088', date: '2026-04-09', name: 'เด็กชายเก่ง กล้า', auth: '' },
-    { hn: '670200', an: '6900100', date: '2026-04-12', name: 'นางสมศรี ใจสู้', auth: '' },
-  ], []);
+  // 🌟 ฟังก์ชันเตรียมข้อมูลส่งไป kpiService
+  const missingAuthQueryFn = useCallback(
+    () =>
+      getMissingAuthCases(
+        connectionConfig!,
+        session!.databaseType,
+        startDate,
+        endDate,
+      ),
+    [connectionConfig, session, startDate, endDate],
+  );
 
-  // 🌟 2. ตัวแปรเก็บข้อมูลที่จะเอาไปแสดงจริงบนหน้าจอ
-  const [displayData, setDisplayData] = useState(ALL_MOCK_DATA);
+  // 🌟 ใช้ useQuery ดึงข้อมูล
+  const missingAuthQuery = useQuery<any[]>({
+    queryFn: missingAuthQueryFn,
+    enabled: isConnected,
+  });
 
-  // 🌟 3. ระบบค้นหา (กรองข้อมูลจากวันที่ ที่อยู่ใน MOCK_DATA)
-  const handleSearch = () => {
-    const filtered = ALL_MOCK_DATA.filter(item => {
-      return item.date >= startDate && item.date <= endDate;
-    });
-    setDisplayData(filtered);
-  };
-
-  // โหลดหน้าครั้งแรก ให้มันกรองตามวันที่เริ่มต้นเลย
-  useEffect(() => {
-    handleSearch();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleRangeChange = useCallback((start: string, end: string) => {
+    setStartDate(start);
+    setEndDate(end);
   }, []);
 
-  // 4. คำนวณภาพรวมสำหรับการ์ดและกราฟ (นับจาก displayData)
-  const totalCases = displayData.length;
-  const missingAuth = displayData.filter(item => !item.auth || item.auth.trim() === '').length;
-  const completeAuth = totalCases - missingAuth;
+  // --- จัดการข้อมูลที่ดึงมาได้ ---
+  const displayData = missingAuthQuery.data ?? [];
+  const isLoading = missingAuthQuery.isLoading;
 
-  // 5. กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
+  const totalCases = displayData.length;
+  // กรองคนที่ไม่มี Auth 
   const missingAuthTableData = displayData.filter(item => !item.auth || item.auth.trim() === '');
+  const missingAuthCount = missingAuthTableData.length;
+  const completeAuthCount = totalCases - missingAuthCount;
 
   const chartData = [
-    { name: 'สิทธิครบ', count: completeAuth, fill: '#10b981' },
-    { name: 'สิทธิว่าง', count: missingAuth, fill: '#f43f5e' },
+    { name: 'สิทธิครบ', count: completeAuthCount, fill: '#10b981' },
+    { name: 'สิทธิว่าง', count: missingAuthCount, fill: '#f43f5e' },
   ];
 
   return (
-    <div className="flex-1 space-y-6 p-8 pt-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6">
+      {/* 1. ส่วนหัวและปุ่มเลือกวันที่ (ใช้ DateRangePicker ของระบบ) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900">ตรวจสอบเลข Auth Code ว่าง</h2>
-          <p className="text-slate-500 font-medium">จัดการข้อมูลโรงพยาบาลบางไทร</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            ตรวจสอบเลข Auth Code ว่าง
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            รายชื่อผู้มารับบริการที่ไม่ได้ลงข้อมูลสิทธิการรักษา
+          </p>
         </div>
         
-        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
-          <CalendarIcon className="h-4 w-4 text-slate-400" />
-          <div className="flex items-center gap-1">
-             <input 
-               type="date" 
-               className="text-sm border-none focus:ring-0 p-1 cursor-pointer" 
-               value={startDate} 
-               onChange={(e) => setStartDate(e.target.value)} 
-             />
-             <span className="text-slate-400 text-xs">ถึง</span>
-             <input 
-               type="date" 
-               className="text-sm border-none focus:ring-0 p-1 cursor-pointer" 
-               value={endDate} 
-               onChange={(e) => setEndDate(e.target.value)} 
-             />
-          </div>
-          <button 
-            onClick={handleSearch}
-            className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95"
-          >
-            <Search className="h-4 w-4" /> ค้นหา
-          </button>
-        </div>
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onRangeChange={handleRangeChange}
+          isLoading={isLoading}
+        />
       </div>
 
+      {/* 2. การ์ดสรุปยอด */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between pb-2">
-            <p className="text-sm font-medium text-slate-600">เคสในช่วงที่เลือก</p>
+            <p className="text-sm font-medium text-slate-600">เคสทั้งหมดในช่วงที่เลือก</p>
             <Users className="h-4 w-4 text-blue-500" />
           </div>
           <div className="text-2xl font-bold text-slate-900">{totalCases} ราย</div>
@@ -124,18 +103,19 @@ const SpecialReport = () => {
             <p className="text-sm font-medium text-slate-600">ลงข้อมูลครบ</p>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </div>
-          <div className="text-2xl font-bold text-emerald-600">{completeAuth} ราย</div>
+          <div className="text-2xl font-bold text-emerald-600">{completeAuthCount} ราย</div>
         </div>
         <div className="rounded-xl border bg-white p-6 shadow-sm border-l-4 border-l-rose-500">
           <div className="flex items-center justify-between pb-2">
             <p className="text-sm font-medium text-slate-600">เลข Auth ว่าง</p>
             <UserX className="h-4 w-4 text-rose-500" />
           </div>
-          <div className="text-2xl font-bold text-rose-600">{missingAuth} ราย</div>
+          <div className="text-2xl font-bold text-rose-600">{missingAuthCount} ราย</div>
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
+        {/* 3. กราฟ */}
         <div className="md:col-span-3 rounded-xl border bg-white p-6 shadow-sm">
           <h3 className="font-semibold text-slate-800 text-sm mb-6">สัดส่วนข้อมูล</h3>
           <div className="h-[300px] w-full">
@@ -153,11 +133,12 @@ const SpecialReport = () => {
           </div>
         </div>
 
+        {/* 4. ตารางแสดงเฉพาะคนสิทธิว่าง */}
         <div className="md:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b bg-rose-50/50 flex justify-between items-center">
             <h3 className="font-semibold text-rose-700 text-sm">รายชื่อผู้มารับบริการที่ต้องตาม Auth Code</h3>
             <span className="text-xs bg-white text-rose-600 px-2 py-1 rounded-full border border-rose-200 font-medium">
-              พบ {missingAuthTableData.length} รายการ
+              พบ {missingAuthCount} รายการ
             </span>
           </div>
           
@@ -172,7 +153,11 @@ const SpecialReport = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {missingAuthTableData.map((item, idx) => (
+                {isLoading ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-slate-500">กำลังโหลดข้อมูลจากฐานข้อมูล...</td></tr>
+                ) : !isConnected ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-rose-500">ยังไม่ได้เชื่อมต่อฐานข้อมูล HOSxP</td></tr>
+                ) : missingAuthTableData.map((item, idx) => (
                   <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
                     <td className="px-4 py-4">
                       <div className="font-bold text-slate-800">{item.hn}</div>
@@ -190,7 +175,7 @@ const SpecialReport = () => {
               </tbody>
             </table>
             
-            {missingAuthTableData.length === 0 && (
+            {!isLoading && isConnected && missingAuthCount === 0 && (
               <div className="p-12 text-center flex flex-col items-center justify-center space-y-3">
                 <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
                   <CheckCircle2 className="h-6 w-6" />
@@ -206,6 +191,4 @@ const SpecialReport = () => {
       </div>
     </div>
   );
-};
-
-export default SpecialReport;
+}
