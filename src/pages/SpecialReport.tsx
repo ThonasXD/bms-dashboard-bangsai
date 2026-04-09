@@ -31,20 +31,19 @@ const getFirstDayOfMonthLocal = () => {
   return new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
 };
 
+// แก้ไขจุดนี้: เปลี่ยนจาก toLocaleDateString เป็นการจัด Format ด้วย String
 const formatThaiDate = (dateStr: string) => {
   if (!dateStr) return "-";
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`; // จะได้ผลลัพธ์เป็น 09/04/2026
 };
 
 const SpecialReport = () => {
   const [startDate, setStartDate] = useState(getFirstDayOfMonthLocal());
   const [endDate, setEndDate] = useState(getTodayLocal());
   
-  // สร้าง State สำหรับเก็บข้อมูลที่จะแสดงผลจริง
   const [displayData, setDisplayData] = useState<any[]>([]);
 
-  // ข้อมูลสมมติ (Mock Data) ที่มีช่วงวันที่หลากหลายขึ้นเพื่อใช้ทดสอบ
   const MOCK_DATA = useMemo(() => [
     { hn: '670001', an: '6900001', date: '2026-03-01', name: 'นายสมชาย รักดี', right: 'ชำระเงินเอง', auth: '' },
     { hn: '670045', an: '6900023', date: '2026-03-15', name: 'นางสาวใจดี มีสุข', right: 'สิทธิบัตรทอง', auth: 'A12345' },
@@ -53,16 +52,13 @@ const SpecialReport = () => {
     { hn: '670155', an: '6900088', date: '2026-04-09', name: 'เด็กชายเก่ง กล้า', right: 'สิทธิบัตรทอง', auth: 'B98765' },
   ], []);
 
-  // ฟังก์ชันกดปุ่มค้นหา
   const handleSearch = () => {
-    // กรองข้อมูลตามช่วงวันที่ที่เลือก
     const filtered = MOCK_DATA.filter(item => {
       return item.date >= startDate && item.date <= endDate;
     });
     setDisplayData(filtered);
   };
 
-  // ให้แสดงข้อมูลทั้งหมดตอนโหลดหน้าเว็บครั้งแรก
   useMemo(() => {
     setDisplayData(MOCK_DATA);
   }, [MOCK_DATA]);
@@ -91,7 +87,6 @@ const SpecialReport = () => {
              <span className="text-slate-400 text-xs">ถึง</span>
              <input type="date" className="text-sm border-none focus:ring-0 p-1" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
-          {/* เพิ่ม onClick={handleSearch} ที่ปุ่มนี้ */}
           <button 
             onClick={handleSearch}
             className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95"
