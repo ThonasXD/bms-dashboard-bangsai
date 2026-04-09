@@ -754,12 +754,9 @@ export async function getDiagnosisSummary(
   return rows[0] ?? { totalDiagnoses: 0, uniqueCodes: 0 };
 }
 
-// ---------------------------------------------------------------------------
-// US5 - Missing Auth Code / Special Reports
-// ---------------------------------------------------------------------------
-
 /**
- * Retrieves a list of patients who do not have an auth_code within a date range.
+ * US5 - Missing Auth Code / Special Reports
+ * Retrieves a list of ALL patients within a date range to calculate total, complete, and missing auth.
  */
 export async function getMissingAuthCases(
   config: ConnectionConfig,
@@ -767,13 +764,15 @@ export async function getMissingAuthCases(
   startDate: string,
   endDate: string,
 ): Promise<{ hn: string; an: string; date: string; name: string; auth: string }[]> {
+  
+  // 🌟 แก้ไข SQL: ดึงข้อมูลทุกคนในช่วงวันที่ และ Join ตาราง visit_pttype เพื่อเอา auth_code จริงๆ
   const sql =
-    `SELECT o.hn, o.an, o.vstdate as date, concat(p.pname, p.fname, ' ', p.lname) as name, o.auth_code as auth ` +
+    `SELECT o.hn, o.an, o.vstdate as date, concat(p.pname, p.fname, ' ', p.lname) as name, vp.auth_code as auth ` +
     `FROM ovst o ` +
     `LEFT JOIN patient p ON o.hn = p.hn ` +
+    `LEFT JOIN visit_pttype vp ON o.vn = vp.vn ` +
     `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}' ` +
-    `AND (o.auth_code IS NULL OR o.auth_code = '') ` +
-    `LIMIT 500`;
+    `LIMIT 3000`; // จำกัดไว้ 3000 เผื่อคนไข้เยอะ
     
   const response = await executeSqlViaApi(sql, config);
   
@@ -782,6 +781,6 @@ export async function getMissingAuthCases(
     an: String(row['an'] ?? ''),
     date: String(row['date'] ?? ''),
     name: String(row['name'] ?? ''),
-    auth: String(row['auth'] ?? ''),
+    auth: String(row['auth'] ?? ''), // ถ้าไม่มี auth_code ระบบจะมองเป็นค่าว่างและนับเข้าช่องสีแดง
   }));
 }
