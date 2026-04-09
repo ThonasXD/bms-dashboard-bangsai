@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react'; // ลบ React ออกเพราะไม่ได้เรียกใช้โดยตรง
 import { 
-  FileSearch, 
+  // FileSearch ถูกลบออกเพราะไม่ได้ใช้งาน
   Calendar as CalendarIcon, 
   UserX, 
   CheckCircle2, 
@@ -21,14 +21,12 @@ import {
 
 // --- ฟังก์ชันจัดการวันที่แบบแม่นยำ (Local Time) ---
 
-// 1. ดึงวันที่วันนี้ (รูปแบบ YYYY-MM-DD สำหรับ input)
 const getTodayLocal = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
   return new Date(now.getTime() - offset).toISOString().split('T')[0];
 };
 
-// 2. ดึงวันแรกของเดือนนี้ (รูปแบบ YYYY-MM-DD สำหรับ input)
 const getFirstDayOfMonthLocal = () => {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -36,7 +34,6 @@ const getFirstDayOfMonthLocal = () => {
   return new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
 };
 
-// 3. แปลงเป็น วัน/เดือน/ปี พ.ศ. (สำหรับแสดงผลในตาราง)
 const formatThaiDate = (dateStr: string) => {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
@@ -47,7 +44,6 @@ const formatThaiDate = (dateStr: string) => {
   });
 };
 
-// 4. ดึงชื่อเดือนและปี พ.ศ. (สำหรับหัวข้อรายงาน)
 const getMonthYearText = (dateStr: string) => {
   if (!dateStr) return "";
   const date = new Date(dateStr);
@@ -55,7 +51,6 @@ const getMonthYearText = (dateStr: string) => {
 };
 
 const SpecialReport = () => {
-  // ตั้งค่าเริ่มต้น: เริ่มวันที่ 1 ของเดือนนี้ ถึง วันนี้
   const [startDate, setStartDate] = useState(getFirstDayOfMonthLocal());
   const [endDate, setEndDate] = useState(getTodayLocal());
 
@@ -151,8 +146,8 @@ const SpecialReport = () => {
                 <XAxis type="number" hide />
                 <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '12px', fontWeight: 600 }} />
                 <Tooltip 
-                   cursor={{fill: '#f8fafc'}}
-                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    cursor={{fill: '#f8fafc'}}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={40}>
                   {chartData.map((entry, index) => (
