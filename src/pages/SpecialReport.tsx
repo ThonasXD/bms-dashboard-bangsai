@@ -54,7 +54,8 @@ const SpecialReport = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`api/get_auth_data.php?start=${startDate}&end=${endDate}`);
+      // 🌟 แก้ไข URL ตรงนี้ให้ชี้ไปที่ XAMPP (พอร์ต 80) โดยตรง
+      const response = await fetch(`http://192.168.7.247/api/get_auth_data.php?start=${startDate}&end=${endDate}`);
       if (!response.ok) throw new Error('Network response was not ok');
       const data = await response.json();
       setDisplayData(data);
@@ -68,14 +69,14 @@ const SpecialReport = () => {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]); // เพิ่ม fetchData ใน dependency array เพื่อความถูกต้องของ React
+  }, [fetchData]);
 
   // 1. คำนวณภาพรวมสำหรับการ์ดและกราฟ
   const totalCases = displayData.length;
   const missingAuth = displayData.filter(item => !item.auth || item.auth.trim() === '').length;
   const completeAuth = totalCases - missingAuth;
 
-  // 🌟 2. ตัวแปรใหม่: กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
+  // 2. กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
   const missingAuthTableData = displayData.filter(item => !item.auth || item.auth.trim() === '');
 
   const chartData = [
@@ -185,7 +186,7 @@ const SpecialReport = () => {
               <tbody className="divide-y">
                 {loading ? (
                   <tr><td colSpan={4} className="p-8 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
-                ) : missingAuthTableData.map((item, idx) => ( // 🌟 นำตัวแปรที่กรองแล้วมาใช้งาน
+                ) : missingAuthTableData.map((item, idx) => (
                   <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
                     <td className="px-4 py-4">
                       <div className="font-bold text-slate-800">{item.hn}</div>
@@ -203,7 +204,6 @@ const SpecialReport = () => {
               </tbody>
             </table>
             
-            {/* 🌟 กรณีที่ไม่มีคนสิทธิว่างเลย (เคลียร์งานหมดแล้ว) */}
             {!loading && missingAuthTableData.length === 0 && (
               <div className="p-12 text-center flex flex-col items-center justify-center space-y-3">
                 <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
