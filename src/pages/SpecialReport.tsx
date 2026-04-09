@@ -1,32 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, 
   UserX, 
   CheckCircle2, 
   Users,
-  Search,
-  Loader2
+  Search
 } from 'lucide-react';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 
-// --- ฟังก์ชันจัดการวันที่ (บังคับเป็น DD/MM/YYYY) ---
+// --- ฟังก์ชันจัดการวันที่ ---
 const formatThaiDate = (dateStr: string) => {
   if (!dateStr || dateStr === "0000-00-00") return "-";
-  
   const cleanDate = dateStr.split('T')[0];
   const parts = cleanDate.split('-');
-  
   if (parts.length !== 3) return dateStr;
-  
   const [year, month, day] = parts;
   return `${day}/${month}/${year}`;
 };
@@ -47,36 +36,40 @@ const getFirstDayOfMonthLocal = () => {
 const SpecialReport = () => {
   const [startDate, setStartDate] = useState(getFirstDayOfMonthLocal());
   const [endDate, setEndDate] = useState(getTodayLocal());
-  const [displayData, setDisplayData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  // --- ฟังก์ชันดึงข้อมูลจาก API จริง ---
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 🌟 แก้ไข URL ตรงนี้ให้ชี้ไปที่ XAMPP (พอร์ต 80) โดยตรง
-      const response = await fetch(`http://192.168.7.247/api/get_auth_data.php?start=${startDate}&end=${endDate}`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data = await response.json();
-      setDisplayData(data);
-    } catch (error) {
-      console.error("Fetch error:", error);
-      setDisplayData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate]);
+  // 🌟 1. ฐานข้อมูลจำลอง (Mock Data) ใส่เคสวันที่ต่างกันเพื่อให้ลองค้นหาได้
+  const ALL_MOCK_DATA = useMemo(() => [
+    { hn: '670001', an: '6900001', date: '2026-03-01', name: 'นายสมชาย รักดี', auth: '' },
+    { hn: '670045', an: '6900023', date: '2026-03-15', name: 'นางสาวใจดี มีสุข', auth: 'A12345' },
+    { hn: '670089', an: '6900045', date: '2026-04-01', name: 'นายมานะ ขยัน', auth: '' },
+    { hn: '670120', an: '6900060', date: '2026-04-05', name: 'นางวิไล พรพรรณ', auth: 'C77889' },
+    { hn: '670155', an: '6900088', date: '2026-04-09', name: 'เด็กชายเก่ง กล้า', auth: '' },
+    { hn: '670200', an: '6900100', date: '2026-04-12', name: 'นางสมศรี ใจสู้', auth: '' },
+  ], []);
 
+  // 🌟 2. ตัวแปรเก็บข้อมูลที่จะเอาไปแสดงจริงบนหน้าจอ
+  const [displayData, setDisplayData] = useState(ALL_MOCK_DATA);
+
+  // 🌟 3. ระบบค้นหา (กรองข้อมูลจากวันที่ ที่อยู่ใน MOCK_DATA)
+  const handleSearch = () => {
+    const filtered = ALL_MOCK_DATA.filter(item => {
+      return item.date >= startDate && item.date <= endDate;
+    });
+    setDisplayData(filtered);
+  };
+
+  // โหลดหน้าครั้งแรก ให้มันกรองตามวันที่เริ่มต้นเลย
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    handleSearch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // 1. คำนวณภาพรวมสำหรับการ์ดและกราฟ
+  // 4. คำนวณภาพรวมสำหรับการ์ดและกราฟ (นับจาก displayData)
   const totalCases = displayData.length;
   const missingAuth = displayData.filter(item => !item.auth || item.auth.trim() === '').length;
   const completeAuth = totalCases - missingAuth;
 
-  // 2. กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
+  // 5. กรองข้อมูลเอาเฉพาะ "คนที่ Auth ว่าง" เพื่อส่งไปวาดในตาราง
   const missingAuthTableData = displayData.filter(item => !item.auth || item.auth.trim() === '');
 
   const chartData = [
@@ -110,17 +103,14 @@ const SpecialReport = () => {
              />
           </div>
           <button 
-            onClick={fetchData}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+            onClick={handleSearch}
+            className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 flex items-center gap-1 transition-all active:scale-95"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} 
-            ค้นหา
+            <Search className="h-4 w-4" /> ค้นหา
           </button>
         </div>
       </div>
 
-      {/* Stats Cards (ข้อมูลภาพรวมทั้งหมด) */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between pb-2">
@@ -146,7 +136,6 @@ const SpecialReport = () => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
-        {/* Chart Section */}
         <div className="md:col-span-3 rounded-xl border bg-white p-6 shadow-sm">
           <h3 className="font-semibold text-slate-800 text-sm mb-6">สัดส่วนข้อมูล</h3>
           <div className="h-[300px] w-full">
@@ -164,7 +153,6 @@ const SpecialReport = () => {
           </div>
         </div>
 
-        {/* Table Section (แสดงเฉพาะคนที่สิทธิว่าง) */}
         <div className="md:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b bg-rose-50/50 flex justify-between items-center">
             <h3 className="font-semibold text-rose-700 text-sm">รายชื่อผู้มารับบริการที่ต้องตาม Auth Code</h3>
@@ -184,9 +172,7 @@ const SpecialReport = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {loading ? (
-                  <tr><td colSpan={4} className="p-8 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
-                ) : missingAuthTableData.map((item, idx) => (
+                {missingAuthTableData.map((item, idx) => (
                   <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
                     <td className="px-4 py-4">
                       <div className="font-bold text-slate-800">{item.hn}</div>
@@ -204,7 +190,7 @@ const SpecialReport = () => {
               </tbody>
             </table>
             
-            {!loading && missingAuthTableData.length === 0 && (
+            {missingAuthTableData.length === 0 && (
               <div className="p-12 text-center flex flex-col items-center justify-center space-y-3">
                 <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
                   <CheckCircle2 className="h-6 w-6" />
